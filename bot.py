@@ -18,7 +18,7 @@ from telegram.ext import (
 # ✅ TIMEZONE
 TZ = ZoneInfo("Asia/Tashkent")
 
-BOT_TOKEN = "TOKENINGNI ALMASHTIR!"
+BOT_TOKEN = "8657935059:AAE4-g3V-QQu2JCBGCYQDus_M3WPiRDN-Kk"
 ADMIN_IDS = [1140333236, 5442902953]
 
 logging.basicConfig(

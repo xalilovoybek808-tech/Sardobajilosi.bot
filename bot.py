@@ -14,6 +14,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+now = datetime.utcnow() + timedelta(hours=5)
 
 # --------------------------------------------------
 # O'ZINGIZNIKINI O'ZGARTIRING!

@@ -346,7 +346,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [InlineKeyboardButton("Oylik to'lash", callback_data=f"pay_{worker_id}")],
             [InlineKeyboardButton("Ish kunlarim", callback_data=f"days_{worker_id}")],
-            [InlineKeyboardButton("Ishchini o'chirish", callback_data=f"remove_{worker_id}")]
+            [InlineKeyboardButton("Ishchini o'chirish", callback_data=f"remove_{worker_id}")],
+            [InlineKeyboardButton("+5 soat", callback_data=f"add5_{worker_id}")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(f"Ishchi: {name}\nTanlang:", reply_markup=reply_markup)
@@ -391,6 +392,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.edit_message_text("Ishchi topilmadi.", reply_markup=None)
         conn.close()
+
+    elif data.startswith("add5_") and role == "boshliq":
+        worker_id = int(data.split("_")[1])
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        today = datetime.now().strftime("%Y-%m-%d")
+        c.execute("INSERT INTO shifts (user_id, work_date, start_time, end_time, duration) VALUES (?, ?, 'manual', 'manual', 5)", (worker_id, today))
+        conn.commit()
+        conn.close()
+        await query.edit_message_text("+5 soat qo'shildi.", reply_markup=None)
 
 
 # Ishchi funksiyalari (o'zgarmagan)

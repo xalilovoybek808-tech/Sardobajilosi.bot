@@ -4,6 +4,10 @@
 import logging
 import sqlite3
 from datetime import datetime, timedelta
+import pytz
+
+# O'zbekiston vaqti
+UZ_TZ = pytz.timezone("Asia/Tashkent")
 
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
@@ -397,7 +401,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         worker_id = int(data.split("_")[1])
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now(UZ_TZ).strftime("%Y-%m-%d")
         c.execute("INSERT INTO shifts (user_id, work_date, start_time, end_time, duration) VALUES (?, ?, 'manual', 'manual', 5)", (worker_id, today))
         conn.commit()
         conn.close()
@@ -407,14 +411,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Ishchi funksiyalari (o'zgarmagan)
 async def clock_in(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(UZ_TZ).strftime("%Y-%m-%d")
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT id FROM shifts WHERE user_id = ? AND work_date = ? AND end_time IS NULL", (uid, today))
     if c.fetchone():
         await update.message.reply_text("Bugun allaqachon boshlagansiz!")
     else:
-        now = datetime.now().strftime("%H:%M:%S")
+        now = datetime.now(UZ_TZ).strftime("%H:%M:%S")
         c.execute("INSERT INTO shifts (user_id, work_date, start_time) VALUES (?, ?, ?)", (uid, today, now))
         await update.message.reply_text(f"Ish boshlandi: {now}")
         # Broadcast to bosses
@@ -433,14 +437,14 @@ async def clock_out(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT id, work_date, start_time FROM shifts WHERE user_id = ? AND work_date = ? AND end_time IS NULL", (uid, datetime.now().strftime("%Y-%m-%d"),))
+    c.execute("SELECT id, work_date, start_time FROM shifts WHERE user_id = ? AND work_date = ? AND end_time IS NULL", (uid, datetime.now(UZ_TZ).strftime("%Y-%m-%d"),))
     row = c.fetchone()
     if not row:
         await update.message.reply_text("Bugun ish boshlamagansiz.")
     else:
         sid, work_date, st = row
-        start = datetime.strptime(f"{work_date} {st}", "%Y-%m-%d %H:%M:%S")
-        end = datetime.now()
+        start = UZ_TZ.localize(datetime.strptime(f"{work_date} {st}", "%Y-%m-%d %H:%M:%S"))
+        end = datetime.now(UZ_TZ)
         if end < start:
             end += timedelta(days=1)
         dur = (end - start).total_seconds() / 3600

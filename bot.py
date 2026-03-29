@@ -350,8 +350,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [InlineKeyboardButton("Oylik to'lash", callback_data=f"pay_{worker_id}")],
             [InlineKeyboardButton("Ish kunlarim", callback_data=f"days_{worker_id}")],
-            [InlineKeyboardButton("Ishchini o'chirish", callback_data=f"remove_{worker_id}")],
-            [InlineKeyboardButton("+5 soat", callback_data=f"add5_{worker_id}")]
+            [InlineKeyboardButton("Ishchini o'chirish", callback_data=f"remove_{worker_id}")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(f"Ishchi: {name}\nTanlang:", reply_markup=reply_markup)

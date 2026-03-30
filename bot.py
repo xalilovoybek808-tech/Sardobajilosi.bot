@@ -203,48 +203,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     role = get_role(uid)
 
-    # Zapchast qo'shish
-    elif text == "Zapchast":
-    context.user_data["awaiting"] = "zap_name"
-    await update.message.reply_text("Zapchast nomini kiriting:", reply_markup=ReplyKeyboardRemove())
-    return
-
-# Holat: foydalanuvchi zapchast nomini kiritmoqda
-awaiting = context.user_data.get("awaiting")
-
-if awaiting == "zap_name":
-    context.user_data["exp_type"] = text  # zapchast nomi
-    context.user_data["awaiting"] = "zap_amount"
-    await update.message.reply_text(f"{text} summasini kiriting (masalan: 300000):")
-    return
-
-elif awaiting == "zap_amount":
-    try:
-        amount = float(text.replace(" ", "").replace(",", ""))
-        exp_type = context.user_data["exp_type"]
-
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        c.execute("INSERT INTO expenses (type, amount) VALUES (?, ?)", (exp_type, amount))
-
-        # Jami chiqimni yangilash
-        c.execute("SELECT value FROM settings WHERE key = 'total_expense'")
-        current = float(c.fetchone()[0])
-        new_total = current + amount
-        c.execute("UPDATE settings SET value = ? WHERE key = 'total_expense'", (new_total,))
-        conn.commit()
-        conn.close()
-
-        reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
-        await update.message.reply_text(
-            f"Zapchast qo'shildi!\n{exp_type}: {amount:,.0f} so'm\nJami chiqim: {new_total:,.0f} so'm",
-            reply_markup=reply_markup
-        )
-    except:
-        await update.message.reply_text("Faqat raqam kiriting.")
-        context.user_data.clear()
-        return
-
     # "Orqaga" tugmasi bosh menyuga qaytaradi
     if text == "Orqaga":
         context.user_data.clear()

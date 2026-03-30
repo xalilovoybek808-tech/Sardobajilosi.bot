@@ -125,14 +125,38 @@ BOSHLIQ_MENU = ReplyKeyboardMarkup(
 
 CHIQIM_MENU = ReplyKeyboardMarkup(
     [
-        [KeyboardButton("Zapchast")],
-        [KeyboardButton("Boshqa chiqim")],
+        [KeyboardButton("Boshqa chiqim"), KeyboardButton("Zapchast")],
+        [KeyboardButton("Chiqimlar ro'yxati"), KeyboardButton("Orqaga")]
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=False
+)
+
+BALANS_MENU = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("Balans"), KeyboardButton("ishni 0 qilish")],
         [KeyboardButton("Orqaga")]
     ],
     resize_keyboard=True,
     one_time_keyboard=False
 )
 
+async def show_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+
+    c.execute("SELECT type, amount, created_at FROM expenses ORDER BY id DESC LIMIT 20")
+    rows = c.fetchall()
+    conn.close()
+
+    if not rows:
+        text = "Chiqimlar hali yo'q."
+    else:
+        text = "Oxirgi chiqimlar:\n\n"
+        for r in rows:
+            text += f"{r[2]} | {r[0]} | {r[1]:,.0f} so'm\n"
+
+    await update.message.reply_text(text, reply_markup=CHIQIM_MENU)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -230,6 +254,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif text == "Chiqim kiritish":
             await update.message.reply_text("Chiqim turini tanlang:", reply_markup=CHIQIM_MENU)
             return
+        elif text == "Chiqimlar ro'yxati":
+            await show_expenses(update, context)
+            return
 
         elif text in ["Zapchast", "Oylik", "Boshqa chiqim"]:
             context.user_data["exp_type"] = text
@@ -241,8 +268,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         elif text == "Balans ko'rish":
-            await show_balance(update, context)
+            await update.message.reply_text(
+               "Balans menyusi:",
+               reply_markup=BALANS_MENU
+            )
             return
+        elif text == "Balans":
+             await show_balance(update, context)
+             return
 
         elif text == "Ish kunlarim":
             await my_days(update, context)

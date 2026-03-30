@@ -95,8 +95,7 @@ def is_admin(user_id: int) -> bool:
 
 ISHCHI_MENU = ReplyKeyboardMarkup(
     [
-        [KeyboardButton("Ishni boshlash")],
-        [KeyboardButton("Ishni yakunlash")],
+        [KeyboardButton("Ishni boshlash"), KeyboardButton("Ishni yakunlash")],
         [KeyboardButton("Ish kunlarim")]
     ],
     resize_keyboard=True,
@@ -116,8 +115,7 @@ ADMIN_MENU = ReplyKeyboardMarkup(
 BOSHLIQ_MENU = ReplyKeyboardMarkup(
     [
         [KeyboardButton("Ishchilar"), KeyboardButton("Narx o'zgartirish")],
-        [KeyboardButton("Chiqim kiritish"), KeyboardButton("Balans ko'rish")],
-        [KeyboardButton("ishni 0 qilish")]
+        [KeyboardButton("Chiqim kiritish"), KeyboardButton("Balans ko'rish")]
     ],
     resize_keyboard=True,
     one_time_keyboard=False

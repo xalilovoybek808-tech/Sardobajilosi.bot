@@ -151,8 +151,11 @@ async def show_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "Chiqimlar hali yo'q."
     else:
         text = "Oxirgi chiqimlar:\n\n"
-        for r in rows:
-            text += f"{r[2]} | {r[0]} | {r[1]:,.0f} so'm\n"
+        c.execute("SELECT type, amount, comment, created_at FROM expenses ORDER BY id DESC LIMIT 20")
+rows = c.fetchall()
+    for r in rows:
+    name = r[2] if r[2] else ""
+    text += f"{r[3]} | {r[0]} | {name} | {r[1]:,.0f} so'm\n"
 
     await update.message.reply_text(text, reply_markup=CHIQIM_MENU)
 
@@ -256,11 +259,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_expenses(update, context)
             return
 
-        elif text in ["Zapchast", "Oylik", "Boshqa chiqim"]:
-            context.user_data["exp_type"] = text
-            context.user_data["awaiting"] = "exp_amount"
+         elif text == "Zapchast":
+            context.user_data["awaiting"] = "zap_name"
             await update.message.reply_text(
-                f"{text} summasini yozing (masalan: 1500000)",
+                "Zapchast nomini yozing:",
                 reply_markup=ReplyKeyboardRemove()
             )
             return
@@ -296,18 +298,51 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     awaiting = context.user_data.get("awaiting")
 
     if awaiting == "set_rate":
-        try:
-            rate = int(text.replace(" ", "").replace(",", ""))
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("UPDATE settings SET value = ? WHERE key = 'hourly_rate'", (rate,))
-            conn.commit()
-            conn.close()
-            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+        elif awaiting == "zap_name":
+            context.user_data["zap_name"] = text
+            context.user_data["awaiting"] = "zap_amount"
+
             await update.message.reply_text(
-                f"Soatlik narx yangilandi: {rate:,} so'm",
-                reply_markup=reply_markup
+                "Zapchast summasini yozing (masalan: 250000)"
             )
+        elif awaiting == "zap_amount":
+    try:
+        amount = float(text.replace(" ", "").replace(",", ""))
+        zap_name = context.user_data["zap_name"]
+
+        now = datetime.now(UZ_TZ).strftime("%Y-%m-%d %H:%M")
+
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+
+        c.execute(
+            "INSERT INTO expenses (type, amount, comment) VALUES (?, ?, ?)",
+            ("Zapchast", amount, zap_name)
+        )
+
+        c.execute("SELECT value FROM settings WHERE key = 'total_expense'")
+        current = float(c.fetchone()[0])
+
+        new_total = current + amount
+
+        c.execute(
+            "UPDATE settings SET value = ? WHERE key = 'total_expense'",
+            (new_total,)
+        )
+
+        conn.commit()
+        conn.close()
+
+        reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+
+        await update.message.reply_text(
+            f"Zapchast saqlandi!\n\n"
+            f"Nomi: {zap_name}\n"
+            f"Summa: {amount:,.0f} so'm\n"
+            f"Sana: {now}",
+            reply_markup=reply_markup
+        )
+
         except:
             await update.message.reply_text("Faqat raqam kiriting.")
         context.user_data.clear()

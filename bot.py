@@ -160,6 +160,9 @@ async def show_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if exp_type == "Zapchast" and comment:
                 # Zapchast turida comment yoziladi
                 text += f"{created}\n{comment}\nSumma: {amount:,.0f} so'm\n{'='*30}\n"
+            elif exp_type == "Boshqa chiqim" and comment:
+                # Boshqa chiqim turida comment yoziladi
+                text += f"{created}\n{comment}\nSumma: {amount:,.0f} so'm\n{'='*30}\n"
             else:
                 text += f"{created} | {exp_type} | {amount:,.0f} so'm\n"
 
@@ -273,11 +276,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        elif text in ["Oylik", "Boshqa chiqim"]:
+        elif text == "Oylik":
             context.user_data["exp_type"] = text
             context.user_data["awaiting"] = "exp_amount"
             await update.message.reply_text(
-                f"{text} summasini yozing (masalan: 1500000)",
+                f"Oylik summasini yozing (masalan: 1500000)",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return
+        
+        elif text == "Boshqa chiqim":
+            context.user_data["awaiting"] = "other_exp_type"
+            await update.message.reply_text(
+                "Chiqim turini yozing (masalan: Transport, Kazo, Reklama va h.k.)",
                 reply_markup=ReplyKeyboardRemove()
             )
             return
@@ -337,7 +348,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             c = conn.cursor()
             c.execute("SELECT full_name FROM users WHERE user_id = ?", (worker_id,))
             name = c.fetchone()[0]
-            c.execute("INSERT INTO expenses (type, amount, comment) VALUES (?, ?, ?)", ("Oylik", amount, f"Oylik: {name}"))
+            today = datetime.now(UZ_TZ).strftime("%Y-%m-%d")
+            comment = f"Oylik: {name}\nSana: {today}"
+            c.execute("INSERT INTO expenses (type, amount, comment) VALUES (?, ?, ?)", ("Oylik", amount, comment))
             c.execute("SELECT value FROM settings WHERE key = 'total_expense'")
             current = float(c.fetchone()[0])
             new_total = current + amount
@@ -353,6 +366,61 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             await update.message.reply_text("Faqat raqam kiriting.")
         context.user_data.clear()
+
+    elif awaiting == "other_exp_type":
+        exp_type = text.strip()
+        context.user_data["exp_type"] = exp_type
+        context.user_data["awaiting"] = "other_exp_amount"
+        await update.message.reply_text(
+            f"Summasini yozing (masalan: 500000)\nChiqim turi: {exp_type}",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+
+    elif awaiting == "other_exp_amount":
+        try:
+            amount = float(text.replace(" ", "").replace(",", ""))
+            context.user_data["exp_amount"] = amount
+            context.user_data["awaiting"] = "other_exp_date"
+            exp_type = context.user_data["exp_type"]
+            await update.message.reply_text(
+                f"Kunni yozing (masalan: 2026-04-03)\nChiqim turi: {exp_type}\nSumma: {amount:,.0f} so'm",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        except:
+            await update.message.reply_text("Faqat raqam kiriting.")
+        return
+
+    elif awaiting == "other_exp_date":
+        exp_date = text.strip()
+        exp_type = context.user_data["exp_type"]
+        amount = context.user_data["exp_amount"]
+        
+        try:
+            # Sanani tekshirish
+            datetime.strptime(exp_date, "%Y-%m-%d")
+            
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            comment = f"Turi: {exp_type}\nSana: {exp_date}"
+            c.execute("INSERT INTO expenses (type, amount, comment) VALUES (?, ?, ?)", ("Boshqa chiqim", amount, comment))
+
+            c.execute("SELECT value FROM settings WHERE key = 'total_expense'")
+            current = float(c.fetchone()[0])
+            new_total = current + amount
+            c.execute("UPDATE settings SET value = ? WHERE key = 'total_expense'", (new_total,))
+            conn.commit()
+            conn.close()
+
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text(
+                f"Saqlandi!\nChiqim turi: {exp_type}\nSumma: {amount:,.0f} so'm\nSana: {exp_date}\nJami chiqim: {new_total:,.0f} so'm",
+                reply_markup=reply_markup
+            )
+            context.user_data.clear()
+        except ValueError:
+            await update.message.reply_text("Sana format xato. Iltimos, YYYY-MM-DD formatida kiriting (masalan: 2026-04-03)")
+        return
 
     elif awaiting == "zapchast_name":
         zapchast_name = text.strip()

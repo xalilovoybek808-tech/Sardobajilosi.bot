@@ -233,17 +233,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
+        elif text == "Ishchilar" and role == "boshliq":
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute("SELECT user_id, full_name FROM users WHERE user_id != ? AND role != 'inactive'", (uid,))
+            workers = c.fetchall()
+            conn.close()
+            if not workers:
+                await update.message.reply_text("Ishchilar yo'q.", reply_markup=BOSHLIQ_MENU)
+                return
+            keyboard = []
+            for wid, name in workers:
+                keyboard.append([InlineKeyboardButton(name, callback_data=f"worker_{wid}")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Ishchini tanlang:", reply_markup=reply_markup)
+            return
+
         elif text == "Chiqim kiritish":
             await update.message.reply_text("Chiqim turini tanlang:", reply_markup=CHIQIM_MENU)
             return
-        elif text == "Zapchast":
-            context.user_data["awaiting"] = "zapchast_name"
-            await update.message.reply_text("Zapchast nomini yozing:", reply_markup=ReplyKeyboardRemove())
+        elif text == "Chiqimlar ro'yxati":
+            await show_expenses(update, context)
             return
 
-    awaiting = context.user_data.get("awaiting")
-    
-    # Zapchast kiritish jarayoni
+        # Zapchast kiritish jarayoni
     if awaiting == "zapchast_name":
         context.user_data["zapchast_name"] = text
         context.user_data["awaiting"] = "zapchast_amount"
@@ -274,6 +287,103 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=reply_markup
             )
         except ValueError:
+            await update.message.reply_text("Faqat raqam kiriting.")
+        context.user_data.clear()
+
+    elif text == "Balans ko'rish":
+            await update.message.reply_text(
+               "Balans menyusi:",
+               reply_markup=BALANS_MENU
+            )
+            return
+    elif text == "Balans":
+             await show_balance(update, context)
+             return
+
+    elif text == "Ish kunlarim":
+            await my_days(update, context)
+            return
+
+    elif text_lower == "ishni 0 qilish" and role == "boshliq":
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute("UPDATE shifts SET duration = 0")
+            c.execute("UPDATE settings SET value = '0' WHERE key = 'total_expense'")
+            conn.commit()
+            conn.close()
+            await update.message.reply_text(
+                "Kirim, chiqim va ishlagan soat 0 ga qaytarildi.",
+                reply_markup=BOSHLIQ_MENU
+            )
+            return
+        
+    # Holatlar (matn kiritish)
+    awaiting = context.user_data.get("awaiting")
+
+    if awaiting == "set_rate":
+        try:
+            rate = int(text.replace(" ", "").replace(",", ""))
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute("UPDATE settings SET value = ? WHERE key = 'hourly_rate'", (rate,))
+            conn.commit()
+            conn.close()
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text(
+                f"Soatlik narx yangilandi: {rate:,} so'm",
+                reply_markup=reply_markup
+            )
+        except:
+            await update.message.reply_text("Faqat raqam kiriting.")
+        context.user_data.clear()
+
+    elif awaiting == "pay_salary":
+        try:
+            amount = float(text.replace(" ", "").replace(",", ""))
+            worker_id = context.user_data["pay_worker"]
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute("SELECT full_name FROM users WHERE user_id = ?", (worker_id,))
+            name = c.fetchone()[0]
+            c.execute("INSERT INTO expenses (type, amount, comment) VALUES (?, ?, ?)", ("Oylik", amount, f"Oylik: {name}"))
+            c.execute("SELECT value FROM settings WHERE key = 'total_expense'")
+            current = float(c.fetchone()[0])
+            new_total = current + amount
+            c.execute("UPDATE settings SET value = ? WHERE key = 'total_expense'", (new_total,))
+            # Ishchining ish kunlarini o'chirish
+            c.execute("DELETE FROM shifts WHERE user_id = ?", (worker_id,))
+            conn.commit()
+            conn.close()
+            await update.message.reply_text(
+                f"Saqlandi!\nOylik {name}: {amount:,.0f} so'm\nJami chiqim: {new_total:,.0f} so'm\nIsh kunlari tozalandi.",
+                reply_markup=BOSHLIQ_MENU
+            )
+        except:
+            await update.message.reply_text("Faqat raqam kiriting.")
+        context.user_data.clear()
+
+    elif awaiting == "exp_amount":
+        try:
+            amount = float(text.replace(" ", "").replace(",", ""))
+            exp_type = context.user_data["exp_type"]
+
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            c.execute("INSERT INTO expenses (type, amount) VALUES (?, ?)", (exp_type, amount))
+
+            c.execute("SELECT value FROM settings WHERE key = 'total_expense'")
+            current = float(c.fetchone()[0])
+            new_total = current + amount
+            c.execute("UPDATE settings SET value = ? WHERE key = 'total_expense'", (new_total,))
+            conn.commit()
+            conn.close()
+
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text(
+                f"Saqlandi!\n{exp_type}: {amount:,.0f} so'm\nJami chiqim: {new_total:,.0f} so'm",
+                reply_markup=reply_markup
+            )
+        except:
             await update.message.reply_text("Faqat raqam kiriting.")
         context.user_data.clear()
 

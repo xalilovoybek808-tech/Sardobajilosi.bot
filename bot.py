@@ -143,7 +143,7 @@ async def show_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
-    c.execute("SELECT type, amount, created_at FROM expenses ORDER BY id DESC LIMIT 20")
+    c.execute("SELECT type, amount, created_at, comment FROM expenses ORDER BY id DESC LIMIT 20")
     rows = c.fetchall()
     conn.close()
 
@@ -152,7 +152,17 @@ async def show_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         text = "Oxirgi chiqimlar:\n\n"
         for r in rows:
-            text += f"{r[2]} | {r[0]} | {r[1]:,.0f} so'm\n"
+            exp_type = r[0]
+            amount = r[1]
+            created = r[2]
+            comment = r[3]
+            
+            if exp_type == "Zapchast" and comment:
+                text += f"{created}\n{comment}\nSumma: {amount:,.0f} so'm\n{'='*30}\n"
+            elif exp_type == "Boshqa chiqim" and comment:
+                text += f"{created}\n{comment}\nSumma: {amount:,.0f} so'm\n{'='*30}\n"
+            else:
+                text += f"{created} | {exp_type} | {amount:,.0f} so'm\n"
 
     await update.message.reply_text(text, reply_markup=CHIQIM_MENU)
 
@@ -227,9 +237,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_admin(uid):
         if text == "Narx o'zgartirish":
             context.user_data["awaiting"] = "set_rate"
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
             await update.message.reply_text(
                 "Yangi soatlik narxni yozing (masalan: 600000)",
-                reply_markup=ReplyKeyboardRemove()
+                reply_markup=reply_markup
             )
             return
 
@@ -257,12 +268,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         elif text in ["Zapchast", "Oylik", "Boshqa chiqim"]:
-            context.user_data["exp_type"] = text
-            context.user_data["awaiting"] = "exp_amount"
-            await update.message.reply_text(
-                f"{text} summasini yozing (masalan: 1500000)",
-                reply_markup=ReplyKeyboardRemove()
-            )
+            if text == "Zapchast":
+                context.user_data["awaiting"] = "zapchast_name"
+                reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+                await update.message.reply_text(
+                    "Zapchast nomini yozing (masalan: Filter, Yog' va h.k.)",
+                    reply_markup=reply_markup
+                )
+            elif text == "Oylik":
+                context.user_data["exp_type"] = text
+                context.user_data["awaiting"] = "exp_amount"
+                reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+                await update.message.reply_text(
+                    f"Oylik summasini yozing (masalan: 1500000)",
+                    reply_markup=reply_markup
+                )
+            elif text == "Boshqa chiqim":
+                context.user_data["awaiting"] = "other_exp_type"
+                reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+                await update.message.reply_text(
+                    "Chiqim turini yozing (masalan: Transport, Kazo, Reklama va h.k.)",
+                    reply_markup=reply_markup
+                )
             return
 
         elif text == "Balans ko'rish":
@@ -309,7 +336,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=reply_markup
             )
         except:
-            await update.message.reply_text("Faqat raqam kiriting.")
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text("Faqat raqam kiriting.", reply_markup=reply_markup)
         context.user_data.clear()
 
     elif awaiting == "pay_salary":
@@ -320,7 +348,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             c = conn.cursor()
             c.execute("SELECT full_name FROM users WHERE user_id = ?", (worker_id,))
             name = c.fetchone()[0]
-            c.execute("INSERT INTO expenses (type, amount, comment) VALUES (?, ?, ?)", ("Oylik", amount, f"Oylik: {name}"))
+            today = datetime.now(UZ_TZ).strftime("%Y-%m-%d")
+            comment = f"Oylik: {name}\nSana: {today}"
+            c.execute("INSERT INTO expenses (type, amount, comment) VALUES (?, ?, ?)", ("Oylik", amount, comment))
             c.execute("SELECT value FROM settings WHERE key = 'total_expense'")
             current = float(c.fetchone()[0])
             new_total = current + amount
@@ -334,8 +364,123 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=BOSHLIQ_MENU
             )
         except:
-            await update.message.reply_text("Faqat raqam kiriting.")
+            await update.message.reply_text("Faqat raqam kiriting.", reply_markup=BOSHLIQ_MENU)
         context.user_data.clear()
+
+    elif awaiting == "zapchast_name":
+        zapchast_name = text.strip()
+        context.user_data["zapchast_name"] = zapchast_name
+        context.user_data["awaiting"] = "zapchast_amount"
+        reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+        await update.message.reply_text(
+            f"Zapchast narxini yozing (masalan: 500000)\nZapchast: {zapchast_name}",
+            reply_markup=reply_markup
+        )
+        return
+
+    elif awaiting == "zapchast_amount":
+        try:
+            amount = float(text.replace(" ", "").replace(",", ""))
+            context.user_data["zapchast_amount"] = amount
+            context.user_data["awaiting"] = "zapchast_date"
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text(
+                f"O'rnatilgan sanasini yozing (masalan: 2026-04-03)\nZapchast: {context.user_data['zapchast_name']}\nSumma: {amount:,.0f} so'm",
+                reply_markup=reply_markup
+            )
+        except:
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text("Faqat raqam kiriting.", reply_markup=reply_markup)
+        return
+
+    elif awaiting == "zapchast_date":
+        zapchast_date = text.strip()
+        zapchast_name = context.user_data["zapchast_name"]
+        amount = context.user_data["zapchast_amount"]
+        
+        try:
+            datetime.strptime(zapchast_date, "%Y-%m-%d")
+            
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            comment = f"Zapchast: {zapchast_name}\nO'rnatilgan: {zapchast_date}"
+            c.execute("INSERT INTO expenses (type, amount, comment) VALUES (?, ?, ?)", ("Zapchast", amount, comment))
+
+            c.execute("SELECT value FROM settings WHERE key = 'total_expense'")
+            current = float(c.fetchone()[0])
+            new_total = current + amount
+            c.execute("UPDATE settings SET value = ? WHERE key = 'total_expense'", (new_total,))
+            conn.commit()
+            conn.close()
+
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text(
+                f"Saqlandi!\nZapchast: {zapchast_name}\nSumma: {amount:,.0f} so'm\nO'rnatilgan: {zapchast_date}\nJami chiqim: {new_total:,.0f} so'm",
+                reply_markup=reply_markup
+            )
+            context.user_data.clear()
+        except ValueError:
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text("Sana format xato. Iltimos, YYYY-MM-DD formatida kiriting (masalan: 2026-04-03)", reply_markup=reply_markup)
+        return
+
+    elif awaiting == "other_exp_type":
+        exp_type = text.strip()
+        context.user_data["exp_type"] = exp_type
+        context.user_data["awaiting"] = "other_exp_amount"
+        reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+        await update.message.reply_text(
+            f"Summasini yozing (masalan: 500000)\nChiqim turi: {exp_type}",
+            reply_markup=reply_markup
+        )
+        return
+
+    elif awaiting == "other_exp_amount":
+        try:
+            amount = float(text.replace(" ", "").replace(",", ""))
+            context.user_data["exp_amount"] = amount
+            context.user_data["awaiting"] = "other_exp_date"
+            exp_type = context.user_data["exp_type"]
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text(
+                f"Kunni yozing (masalan: 2026-04-03)\nChiqim turi: {exp_type}\nSumma: {amount:,.0f} so'm",
+                reply_markup=reply_markup
+            )
+        except:
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text("Faqat raqam kiriting.", reply_markup=reply_markup)
+        return
+
+    elif awaiting == "other_exp_date":
+        exp_date = text.strip()
+        exp_type = context.user_data["exp_type"]
+        amount = context.user_data["exp_amount"]
+        
+        try:
+            datetime.strptime(exp_date, "%Y-%m-%d")
+            
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            comment = f"Turi: {exp_type}\nSana: {exp_date}"
+            c.execute("INSERT INTO expenses (type, amount, comment) VALUES (?, ?, ?)", ("Boshqa chiqim", amount, comment))
+
+            c.execute("SELECT value FROM settings WHERE key = 'total_expense'")
+            current = float(c.fetchone()[0])
+            new_total = current + amount
+            c.execute("UPDATE settings SET value = ? WHERE key = 'total_expense'", (new_total,))
+            conn.commit()
+            conn.close()
+
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text(
+                f"Saqlandi!\nChiqim turi: {exp_type}\nSumma: {amount:,.0f} so'm\nSana: {exp_date}\nJami chiqim: {new_total:,.0f} so'm",
+                reply_markup=reply_markup
+            )
+            context.user_data.clear()
+        except ValueError:
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text("Sana format xato. Iltimos, YYYY-MM-DD formatida kiriting (masalan: 2026-04-03)", reply_markup=reply_markup)
+        return
 
     elif awaiting == "exp_amount":
         try:
@@ -359,7 +504,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=reply_markup
             )
         except:
-            await update.message.reply_text("Faqat raqam kiriting.")
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text("Faqat raqam kiriting.", reply_markup=reply_markup)
         context.user_data.clear()
 
 
@@ -390,7 +536,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         worker_id = int(data.split("_")[1])
         context.user_data["awaiting"] = "pay_salary"
         context.user_data["pay_worker"] = worker_id
-        await context.bot.send_message(chat_id=uid, text="Oylik summasini yozing (masalan: 2000000)", reply_markup=ReplyKeyboardRemove())
+        await context.bot.send_message(chat_id=uid, text="Oylik summasini yozing (masalan: 2000000)", reply_markup=BOSHLIQ_MENU)
 
     elif data.startswith("days_") and role == "boshliq":
         worker_id = int(data.split("_")[1])

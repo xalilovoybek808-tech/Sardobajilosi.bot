@@ -143,7 +143,7 @@ async def show_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
-    c.execute("SELECT type, amount, created_at FROM expenses ORDER BY id DESC LIMIT 20")
+    c.execute("SELECT type, amount, created_at, comment FROM expenses ORDER BY id DESC LIMIT 20")
     rows = c.fetchall()
     conn.close()
 
@@ -152,7 +152,16 @@ async def show_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         text = "Oxirgi chiqimlar:\n\n"
         for r in rows:
-            text += f"{r[2]} | {r[0]} | {r[1]:,.0f} so'm\n"
+            exp_type = r[0]
+            amount = r[1]
+            created = r[2]
+            comment = r[3]
+            
+            if exp_type == "Zapchast" and comment:
+                # Zapchast turida comment yoziladi
+                text += f"{created}\n{comment}\nSumma: {amount:,.0f} so'm\n{'='*30}\n"
+            else:
+                text += f"{created} | {exp_type} | {amount:,.0f} so'm\n"
 
     await update.message.reply_text(text, reply_markup=CHIQIM_MENU)
 
@@ -256,7 +265,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_expenses(update, context)
             return
 
-        elif text in ["Zapchast", "Oylik", "Boshqa chiqim"]:
+        elif text == "Zapchast":
+            context.user_data["awaiting"] = "zapchast_name"
+            await update.message.reply_text(
+                "Zapchast nomini yozing (masalan: Filter, Yog' va h.k.)",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return
+        
+        elif text in ["Oylik", "Boshqa chiqim"]:
             context.user_data["exp_type"] = text
             context.user_data["awaiting"] = "exp_amount"
             await update.message.reply_text(
@@ -336,6 +353,60 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             await update.message.reply_text("Faqat raqam kiriting.")
         context.user_data.clear()
+
+    elif awaiting == "zapchast_name":
+        zapchast_name = text.strip()
+        context.user_data["zapchast_name"] = zapchast_name
+        context.user_data["awaiting"] = "zapchast_amount"
+        await update.message.reply_text(
+            f"Zapchast narxini yozing (masalan: 500000)\nZapchast: {zapchast_name}",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+
+    elif awaiting == "zapchast_amount":
+        try:
+            amount = float(text.replace(" ", "").replace(",", ""))
+            context.user_data["zapchast_amount"] = amount
+            context.user_data["awaiting"] = "zapchast_date"
+            await update.message.reply_text(
+                f"O'rnatilgan sanasini yozing (masalan: 2026-04-03)\nZapchast: {context.user_data['zapchast_name']}\nSumma: {amount:,.0f} so'm",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        except:
+            await update.message.reply_text("Faqat raqam kiriting.")
+        return
+
+    elif awaiting == "zapchast_date":
+        zapchast_date = text.strip()
+        zapchast_name = context.user_data["zapchast_name"]
+        amount = context.user_data["zapchast_amount"]
+        
+        try:
+            # Sanani tekshirish
+            datetime.strptime(zapchast_date, "%Y-%m-%d")
+            
+            conn = sqlite3.connect(DB_FILE)
+            c = conn.cursor()
+            comment = f"Zapchast: {zapchast_name}\nO'rnatilgan: {zapchast_date}"
+            c.execute("INSERT INTO expenses (type, amount, comment) VALUES (?, ?, ?)", ("Zapchast", amount, comment))
+
+            c.execute("SELECT value FROM settings WHERE key = 'total_expense'")
+            current = float(c.fetchone()[0])
+            new_total = current + amount
+            c.execute("UPDATE settings SET value = ? WHERE key = 'total_expense'", (new_total,))
+            conn.commit()
+            conn.close()
+
+            reply_markup = BOSHLIQ_MENU if role == "boshliq" else ADMIN_MENU
+            await update.message.reply_text(
+                f"Saqlandi!\nZapchast: {zapchast_name}\nSumma: {amount:,.0f} so'm\nO'rnatilgan: {zapchast_date}\nJami chiqim: {new_total:,.0f} so'm",
+                reply_markup=reply_markup
+            )
+            context.user_data.clear()
+        except ValueError:
+            await update.message.reply_text("Sana format xato. Iltimos, YYYY-MM-DD formatida kiriting (masalan: 2026-04-03)")
+        return
 
     elif awaiting == "exp_amount":
         try:

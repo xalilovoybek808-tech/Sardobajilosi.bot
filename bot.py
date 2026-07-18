@@ -22,7 +22,7 @@ from telegram.ext import (
 # --------------------------------------------------
 # O'ZINGIZNIKINI O'ZGARTIRING!
 # --------------------------------------------------
-BOT_TOKEN = "8657935059:AAE4-g3V-QQu2JCBGCYQDus_M3WPiRDN-Kk"
+BOT_TOKEN = "8657935059:AAGVG5IjYrlpO7FuJj5NLCiaraa0LEFPTTA"
 
 # Ikki ta boshliq ID (o'zingizniki + ikkinchisi)
 ADMIN_IDS = [1140333236, 5442902953]   # ← ikkinchi ID ni o'zingizniki bilan almashtiring
